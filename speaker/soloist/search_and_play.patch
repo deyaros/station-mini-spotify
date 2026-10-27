@@ -1,59 +1,35 @@
 --- a/scripts/search_and_play.sh
 +++ b/scripts/search_and_play.sh
-@@ -1,4 +1,9 @@
- #!/bin/sh
+@@ -1,0 +2,5 @@
 +# Voice search for Soloist, based on scripts/search_and_play.sh from
 +# https://github.com/Horohi/soloist-station-lite (b02e066). Local changes:
 +# keys come from /data/opt/soloist/etc/keys.env, curl is Entware's /opt/bin/curl,
 +# and Spotify API traffic goes through our own VPN proxy on the NAS (upstream
 +# pinned it to a third-party IP).
- export PATH="/bin:/usr/bin:/sbin:/usr/sbin:$PATH"
- unset LD_LIBRARY_PATH LD_PRELOAD
- 
-@@ -19,10 +24,8 @@
-     LD_LIBRARY_PATH="$BASE_DIR/lib64" "$SOLOIST_BIN" "$@"
- }
- 
+@@ -22,4 +27,2 @@
 -CURL_BIN="$BASE_DIR/bin/curl"
 -[ -x "$CURL_BIN" ] || CURL_BIN="curl"
 -API_CONF="$BASE_DIR/spotify_api.conf"
 -[ -f "$API_CONF" ] || API_CONF="/data/opt/soloist/spotify_api.conf"
 +CURL_BIN="/opt/bin/curl"
 +API_CONF="$BASE_DIR/etc/keys.env"
- CENSOR_FILE="$BASE_DIR/data/censorship"
- [ -f "$CENSOR_FILE" ] || CENSOR_FILE="/data/opt/soloist/data/censorship"
- 
-@@ -48,6 +51,12 @@
-         TYPE="artist"; TERM="${TERM#* }" ;;
-     "песню "*|"песня "*|"трек "*)
-         TYPE="track"; TERM="${TERM#* }" ;;
+@@ -50,0 +54,6 @@
 +    "мои лайки"|"лайки"|"мои любимые"*|"любимые"*|"избранное"|"мое избранное"|"моё избранное"|"мои понравившиеся"*|"понравившиеся"*)
 +        TYPE="liked" ;;
 +    "мой плейлист "*)
 +        TYPE="playlist"; TERM="${TERM#* }"; TERM="${TERM#* }" ;;
 +    "плейлист "*|"плейлиста "*)
 +        TYPE="playlist"; TERM="${TERM#* }" ;;
- esac
- 
- echo "[search] Cleaned search term: '$TERM' (preferred type: $TYPE)" >> "$LOG"
-@@ -76,14 +85,98 @@
- fi
- 
- . "$API_CONF"
+@@ -78,0 +88,2 @@
 +SPOTIFY_CLIENT_ID=$CLIENT_ID
 +SPOTIFY_CLIENT_SECRET=$CLIENT_SECRET
- if [ -z "$SPOTIFY_CLIENT_ID" ] || [ -z "$SPOTIFY_CLIENT_SECRET" ]; then
-     echo "[search] Spotify API keys not set in $API_CONF" >> "$LOG"
-     run_soloist ctl -w 127.0.0.1:9090 play
-     exit 0
- fi
- 
+@@ -85 +96,4 @@
 -CURL_OPTS="--resolve api.spotify.com:443:5.175.161.40 --resolve accounts.spotify.com:443:5.175.161.40 -s"
 +# Web API refuses RU IPs: go through our own VPN (moviebot-xray relay on the NAS)
 +CURL_OPTS="-s -m 10 --socks5-hostname 192.168.8.111:10808"
 +JQ=/opt/bin/jq
 +GAWK=/opt/bin/gawk
- 
+@@ -86,0 +101,79 @@
 +play_uri() {
 +    echo "[search] SUCCESS: Found URI '$1' -> sending to Soloist" >> "$LOG"
 +    run_soloist ctl -w 127.0.0.1:9090 activate >/dev/null 2>&1 || true
@@ -133,6 +109,3 @@
 +    fi
 +fi
 +
- # Token management
- NOW=$(date +%s 2>/dev/null || echo 0)
- TOKEN=""
