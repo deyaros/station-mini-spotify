@@ -1,0 +1,15 @@
+#!/bin/sh
+# Autostart the AirPlay watchdog (delete this file to remove).
+WD=/data/opt/bin/airplay-watchdog.sh
+PID=/tmp/airplay-watchdog.pid
+running() { [ -f "$PID" ] && kill -0 "$(cat "$PID")" 2>/dev/null; }
+case "$1" in
+  start)
+    [ -x "$WD" ] || exit 0
+    running && exit 0
+    start-stop-daemon -S -b -m -p "$PID" -x "$WD"
+    ;;
+  stop)    running && kill "$(cat "$PID")"; rm -f "$PID" ;;
+  restart) "$0" stop; sleep 1; "$0" start ;;
+esac
+exit 0

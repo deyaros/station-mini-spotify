@@ -1,0 +1,8 @@
+#!/bin/sh
+# Autostart the standalone AirPlay receiver (delete this file to remove).
+case "$1" in
+  start)   /data/opt/airplay/airplay.sh start ;;
+  stop)    /data/opt/airplay/airplay.sh stop ;;
+  restart) /data/opt/airplay/airplay.sh restart ;;
+esac
+exit 0

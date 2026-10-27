@@ -1,0 +1,8 @@
+#!/bin/sh
+# Run the arm64 Soloist binary through the bundled Debian glibc loader
+# (the speaker itself has only a 32-bit userspace).
+unset LD_LIBRARY_PATH LD_PRELOAD
+# kernel 4.9 has no rseq and logs every attempt by the new glibc
+export GLIBC_TUNABLES=glibc.pthread.rseq=0
+D=/data/opt/soloist
+exec "$D/lib64/ld-linux-aarch64.so.1" --library-path "$D/lib64" "$D/bin/soloist.bin" "$@"

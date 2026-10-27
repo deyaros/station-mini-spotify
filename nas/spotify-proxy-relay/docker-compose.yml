@@ -1,0 +1,21 @@
+# Relay that exposes the moviebot-xray SOCKS5 proxy on the LAN (192.168.8.111:10808)
+# for the Yandex Station's Spotify voice search (Web API is geo-blocked in RU).
+# No per-client filter: Docker's port proxy hides the client address (172.18.0.1).
+# moviebot itself is untouched. Remove: docker compose down && rm -rf this folder.
+services:
+  spotify-proxy-relay:
+    image: alpine/socat:1.8.0.3
+    container_name: spotify-proxy-relay
+    restart: unless-stopped
+    command: >
+      TCP-LISTEN:10808,fork,reuseaddr
+      TCP:moviebot-xray:10808
+    ports:
+      - "192.168.8.111:10808:10808"
+    networks:
+      - medianet
+
+networks:
+  medianet:
+    name: moviebot_medianet
+    external: true

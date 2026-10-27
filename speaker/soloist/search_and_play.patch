@@ -1,0 +1,138 @@
+--- a/scripts/search_and_play.sh
++++ b/scripts/search_and_play.sh
+@@ -1,4 +1,9 @@
+ #!/bin/sh
++# Voice search for Soloist, based on scripts/search_and_play.sh from
++# https://github.com/Horohi/soloist-station-lite (b02e066). Local changes:
++# keys come from /data/opt/soloist/etc/keys.env, curl is Entware's /opt/bin/curl,
++# and Spotify API traffic goes through our own VPN proxy on the NAS (upstream
++# pinned it to a third-party IP).
+ export PATH="/bin:/usr/bin:/sbin:/usr/sbin:$PATH"
+ unset LD_LIBRARY_PATH LD_PRELOAD
+ 
+@@ -19,10 +24,8 @@
+     LD_LIBRARY_PATH="$BASE_DIR/lib64" "$SOLOIST_BIN" "$@"
+ }
+ 
+-CURL_BIN="$BASE_DIR/bin/curl"
+-[ -x "$CURL_BIN" ] || CURL_BIN="curl"
+-API_CONF="$BASE_DIR/spotify_api.conf"
+-[ -f "$API_CONF" ] || API_CONF="/data/opt/soloist/spotify_api.conf"
++CURL_BIN="/opt/bin/curl"
++API_CONF="$BASE_DIR/etc/keys.env"
+ CENSOR_FILE="$BASE_DIR/data/censorship"
+ [ -f "$CENSOR_FILE" ] || CENSOR_FILE="/data/opt/soloist/data/censorship"
+ 
+@@ -48,6 +51,12 @@
+         TYPE="artist"; TERM="${TERM#* }" ;;
+     "песню "*|"песня "*|"трек "*)
+         TYPE="track"; TERM="${TERM#* }" ;;
++    "мои лайки"|"лайки"|"мои любимые"*|"любимые"*|"избранное"|"мое избранное"|"моё избранное"|"мои понравившиеся"*|"понравившиеся"*)
++        TYPE="liked" ;;
++    "мой плейлист "*)
++        TYPE="playlist"; TERM="${TERM#* }"; TERM="${TERM#* }" ;;
++    "плейлист "*|"плейлиста "*)
++        TYPE="playlist"; TERM="${TERM#* }" ;;
+ esac
+ 
+ echo "[search] Cleaned search term: '$TERM' (preferred type: $TYPE)" >> "$LOG"
+@@ -76,14 +85,98 @@
+ fi
+ 
+ . "$API_CONF"
++SPOTIFY_CLIENT_ID=$CLIENT_ID
++SPOTIFY_CLIENT_SECRET=$CLIENT_SECRET
+ if [ -z "$SPOTIFY_CLIENT_ID" ] || [ -z "$SPOTIFY_CLIENT_SECRET" ]; then
+     echo "[search] Spotify API keys not set in $API_CONF" >> "$LOG"
+     run_soloist ctl -w 127.0.0.1:9090 play
+     exit 0
+ fi
+ 
+-CURL_OPTS="--resolve api.spotify.com:443:5.175.161.40 --resolve accounts.spotify.com:443:5.175.161.40 -s"
++# Web API refuses RU IPs: go through our own VPN (moviebot-xray relay on the NAS)
++CURL_OPTS="-s -m 10 --socks5-hostname 192.168.8.111:10808"
++JQ=/opt/bin/jq
++GAWK=/opt/bin/gawk
+ 
++play_uri() {
++    echo "[search] SUCCESS: Found URI '$1' -> sending to Soloist" >> "$LOG"
++    run_soloist ctl -w 127.0.0.1:9090 activate >/dev/null 2>&1 || true
++    run_soloist ctl -w 127.0.0.1:9090 play "$1"
++    exit 0
++}
++
++# Access token on behalf of the user (read-only playlist scopes), from the
++# REFRESH_TOKEN saved by the one-time login
++user_token() {
++    [ -n "$REFRESH_TOKEN" ] || return 1
++    now=$(date +%s)
++    if [ -f /tmp/spotify_user_token_exp ] && [ "$now" -lt "$(cat /tmp/spotify_user_token_exp)" ]; then
++        cat /tmp/spotify_user_token
++        return 0
++    fi
++    ut=$($CURL_BIN $CURL_OPTS -X POST "https://accounts.spotify.com/api/token" \
++        -u "$SPOTIFY_CLIENT_ID:$SPOTIFY_CLIENT_SECRET" \
++        -d grant_type=refresh_token --data-urlencode "refresh_token=$REFRESH_TOKEN" | $JQ -r '.access_token // empty')
++    [ -n "$ut" ] || return 1
++    (umask 077; echo "$ut" > /tmp/spotify_user_token; echo $((now + 3300)) > /tmp/spotify_user_token_exp)
++    echo "$ut"
++}
++
++# "мои лайки": Liked Songs of the account Soloist is logged in with
++if [ "$TYPE" = "liked" ]; then
++    SPOTIFY_USER=$(grep -o "logged in as [A-Za-z0-9]*" /tmp/soloist.log 2>/dev/null | tail -1 | cut -d" " -f4)
++    if [ -n "$SPOTIFY_USER" ]; then
++        echo "$SPOTIFY_USER" > "$BASE_DIR/data/user_id"
++    else
++        SPOTIFY_USER=$(cat "$BASE_DIR/data/user_id" 2>/dev/null)
++    fi
++    [ -n "$SPOTIFY_USER" ] && play_uri "spotify:user:$SPOTIFY_USER:collection"
++    echo "[search] Liked songs: Soloist user id not found, falling back to search" >> "$LOG"
++    TYPE="track"
++fi
++
++# "плейлист <name>": best name match among the user's own playlists, then public ones
++if [ "$TYPE" = "playlist" ]; then
++    UT=$(user_token)
++    if [ -n "$UT" ]; then
++        # the playlist list is cached for an hour: fetching 200+ playlists takes seconds
++        LIST=""
++        OFF=500
++        FETCHED=0
++        if [ -s /tmp/spotify_playlists ] && [ $(( $(date +%s) - $(date -r /tmp/spotify_playlists +%s) )) -lt 3600 ]; then
++            LIST=$(cat /tmp/spotify_playlists)
++        else
++            OFF=0
++            FETCHED=1
++        fi
++        while [ $OFF -lt 500 ]; do
++            PAGE=$($CURL_BIN $CURL_OPTS "https://api.spotify.com/v1/me/playlists?limit=50&offset=$OFF" \
++                -H "Authorization: Bearer $UT")
++            ROWS=$(printf '%s' "$PAGE" | $JQ -r '.items[]? | select(. != null) | [.uri, .name] | @tsv')
++            [ -n "$ROWS" ] || break
++            LIST="$LIST$ROWS
++"
++            [ -n "$(printf '%s' "$PAGE" | $JQ -r '.next // empty')" ] || break
++            OFF=$((OFF + 50))
++        done
++        [ "$FETCHED" = 1 ] && [ -n "$LIST" ] && printf '%s\n' "$LIST" > /tmp/spotify_playlists
++        URI=$(printf '%s' "$LIST" | SEARCH_TERM="$TERM" LC_ALL=ru_RU.UTF-8 $GAWK -F'\t' '
++            BEGIN { q = tolower(ENVIRON["SEARCH_TERM"]); n = split(q, w, " ") }
++            NF >= 2 {
++                name = tolower($2); s = 0
++                if (name == q) s = 100
++                else if (index(name, q)) s = 50
++                for (i = 1; i <= n; i++) if (length(w[i]) > 1 && index(name, w[i])) s += 5
++                if (s > best) { best = s; uri = $1 }
++            }
++            END { if (best > 0) print uri }')
++        [ -n "$URI" ] && play_uri "$URI"
++        echo "[search] No own playlist matches '$TERM', searching public playlists" >> "$LOG"
++    else
++        echo "[search] No user token (REFRESH_TOKEN missing?), searching public playlists" >> "$LOG"
++    fi
++fi
++
+ # Token management
+ NOW=$(date +%s 2>/dev/null || echo 0)
+ TOKEN=""
