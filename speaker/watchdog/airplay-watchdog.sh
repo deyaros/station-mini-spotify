@@ -19,6 +19,17 @@ SOLOIST=/data/opt/soloist/soloist.sh
 log "started"
 while :; do
   sleep 30
+  # Soloist grows over hours and the speaker has no swap: restart it before
+  # memory runs out (the whole speaker, Alice included, hangs when it does)
+  # (~2-3 MB/min while playing). Below 40 MB restart it when nothing plays,
+  # below 25 MB restart it anyway.
+  avail=$(awk '/MemAvailable/ {print int($2 / 1024)}' /proc/meminfo)
+  if [ -x "$SOLOIST" ] && [ "$avail" -lt 40 ]; then
+    if [ "$avail" -lt 25 ] || ! /data/opt/soloist/bin/soloist ctl -w 127.0.0.1:9090 now 2>/dev/null | grep -q playing; then
+      log "low memory (${avail} MB available): restarting soloist"
+      $SOLOIST restart
+    fi
+  fi
   # Soloist, its voice bridge and audio loop: start whatever is not running
   if [ -x "$SOLOIST" ] && $SOLOIST status | grep -q stopped; then
     log "soloist: $($SOLOIST status | grep stopped | tr '\n' ' ')- starting"

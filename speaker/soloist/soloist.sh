@@ -21,8 +21,13 @@ alive() { [ -f "$RUN/$1.pid" ] && kill -0 "$(cat "$RUN/$1.pid")" 2>/dev/null; }
 start() {
   mkdir -p "$RUN" /tmp/soloist-cache "$D/data"
   # Soloist's own cache limit can't go below 100 MB, but the speaker has ~240 MB
-  # of RAM in total: give the cache its own small tmpfs instead.
-  grep -q " /tmp/soloist-cache " /proc/mounts || mount -t tmpfs -o size=32m tmpfs /tmp/soloist-cache
+  # of RAM and Soloist alone takes ~80-100 MB: give the cache a tiny tmpfs, so
+  # Soloist quickly falls back to streaming mode (works fine) instead of
+  # keeping tracks in RAM.
+  grep -q " /tmp/soloist-cache " /proc/mounts || mount -t tmpfs -o size=4m tmpfs /tmp/soloist-cache
+  # without swap, the default 1.8 MB reserve lets the system thrash for minutes
+  # before the OOM killer acts; a bigger reserve makes it act sooner
+  [ "$(cat /proc/sys/vm/min_free_kbytes)" -ge 8192 ] || echo 8192 > /proc/sys/vm/min_free_kbytes
   grep -q Loopback /proc/asound/cards || modprobe snd-aloop pcm_substreams=1
   if ! alive loop; then
     start-stop-daemon -S -b -m -p "$RUN/loop.pid" -x /bin/sh -- -c \
@@ -41,6 +46,9 @@ start() {
       "$D/lib64/ld-linux-aarch64.so.1" --library-path "$D/lib64" "$D/bin/soloist.bin" \
       -n "$NAME" -k "$SPAK" -D "$D/data" -C /tmp/soloist-cache -z 100 \
       -w 127.0.0.1:9090 -i 50 -v
+    # if memory runs out, Soloist goes first, not Alice
+    sleep 1
+    alive soloist && echo 1000 > "/proc/$(cat "$RUN/soloist.pid")/oom_score_adj"
   fi
   if ! alive bridge && [ -x "$D/bin/soloist-bridge" ]; then
     start-stop-daemon -S -b -m -p "$RUN/bridge.pid" -x /bin/sh -- \
