@@ -18,6 +18,7 @@ mkdir -p "$STAGE/soloist/bin" "$STAGE/airplay/etc"
 
 echo "== fetching components"
 "$HERE/tools/fetch-debian-libs.sh" "$STAGE/soloist"
+"$HERE/tools/build-apulse.sh" "$STAGE/soloist"
 "$HERE/tools/fetch-bridge.sh" "$STAGE/soloist"
 "$HERE/tools/fetch-airplay.sh" "$STAGE/airplay"
 mkdir -p "$STAGE/tar"

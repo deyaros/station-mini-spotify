@@ -45,7 +45,7 @@ start() {
       -c 'exec "$@" >>'"$LOG"' 2>&1' sh \
       "$D/lib64/ld-linux-aarch64.so.1" --library-path "$D/lib64" "$D/bin/soloist.bin" \
       -n "$NAME" -k "$SPAK" -D "$D/data" -C /tmp/soloist-cache -z 100 \
-      -w 127.0.0.1:9090 -i 50 -v
+      -w 127.0.0.1:9090 -i 50
     # if memory runs out, Soloist goes first, not Alice
     sleep 1
     alive soloist && echo 1000 > "/proc/$(cat "$RUN/soloist.pid")/oom_score_adj"

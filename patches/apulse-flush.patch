@@ -1,0 +1,51 @@
+diff --git a/src/apulse-stream.c b/src/apulse-stream.c
+index e3ecfb5..1c8fbaf 100644
+--- a/src/apulse-stream.c
++++ b/src/apulse-stream.c
+@@ -614,7 +614,21 @@ err:
+ static void
+ pa_stream_cork_impl(pa_operation *op)
+ {
+-    g_atomic_int_set(&op->s->paused, !!(op->int_arg_1));
++    pa_stream *s = op->s;
++    int pause = !!(op->int_arg_1);
++
++    g_atomic_int_set(&s->paused, pause);
++
++    // Also pause/resume the ALSA device: otherwise everything already queued
++    // in the ALSA buffer (up to tlength, often ~1 s) keeps playing after a
++    // pause. Devices without pause support just play that buffer out as before.
++    if (s->ph && s->direction == PA_STREAM_PLAYBACK) {
++        snd_pcm_state_t st = snd_pcm_state(s->ph);
++        if (pause && st == SND_PCM_STATE_RUNNING)
++            snd_pcm_pause(s->ph, 1);
++        else if (!pause && st == SND_PCM_STATE_PAUSED)
++            snd_pcm_pause(s->ph, 0);
++    }
+ 
+     if (op->stream_success_cb)
+         op->stream_success_cb(op->s, 1, op->cb_userdata);
+@@ -691,7 +705,22 @@ pa_stream_drain(pa_stream *s, pa_stream_success_cb_t cb, void *userdata)
+ static void
+ pa_stream_flush_impl(pa_operation *op)
+ {
+-    // TODO: is it ok to do nothing?
++    pa_stream *s = op->s;
++
++    // Drop everything the client has queued, in our ring buffer and in the
++    // ALSA buffer: players flush on seek and track change, and without this
++    // the tail of the old track is heard first.
++    ringbuffer_drop(s->rb, ringbuffer_readable_size(s->rb));
++    if (s->ph && s->direction == PA_STREAM_PLAYBACK) {
++        snd_pcm_drop(s->ph);
++        snd_pcm_prepare(s->ph);
++        // A prepared but stopped device never signals "writable", so the
++        // data callback would not run again: restart it with a little silence.
++        char silence[4096] = {0};
++        snd_pcm_writei(s->ph, silence, sizeof(silence) / pa_frame_size(&s->ss));
++        if (snd_pcm_state(s->ph) == SND_PCM_STATE_PREPARED)
++            snd_pcm_start(s->ph);
++    }
+ 
+     if (op->stream_success_cb)
+         op->stream_success_cb(op->s, 1, op->cb_userdata);
