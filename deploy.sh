@@ -21,7 +21,7 @@ echo "== fetching components"
 "$HERE/tools/build-apulse.sh" "$STAGE/soloist"
 "$HERE/tools/fetch-bridge.sh" "$STAGE/soloist"
 "$HERE/tools/fetch-airplay.sh" "$STAGE/airplay"
-"$HERE/tools/build-alice-text.sh" "$STAGE/media"
+"$HERE/tools/build-alice-tools.sh" "$STAGE/media"
 mkdir -p "$STAGE/tar"
 tar -xzf "$TARBALL" -C "$STAGE/tar"
 mv "$STAGE/tar/soloist" "$STAGE/soloist/bin/soloist.bin"
@@ -33,7 +33,7 @@ $A shell '[ -x /data/opt/bin/yse ]' || { echo "install yse first (hackalice.me/s
 $A shell '/data/opt/bin/yse install ent:curl ent:jq ent:gawk' >/dev/null
 
 $A shell '/data/opt/soloist/soloist.sh stop 2>/dev/null; /data/opt/airplay/airplay.sh stop 2>/dev/null; mkdir -p /data/opt/soloist/etc /data/opt/soloist/data /data/opt/airplay/etc /data/opt/bin /data/opt/media/bin; chmod 700 /data/opt/soloist/etc'
-$A push "$STAGE/media/bin/alice-text" /data/opt/media/bin/alice-text >/dev/null
+$A push "$STAGE/media/bin" /data/opt/media/ >/dev/null
 $A push "$HERE/speaker/media/duck.sh" /data/opt/media/duck.sh >/dev/null
 $A push "$HERE/speaker/media/asoundrc" /data/opt/media/.asoundrc >/dev/null
 $A push "$STAGE/soloist/." /data/opt/soloist/ >/dev/null
@@ -58,7 +58,7 @@ $A shell '
   chmod 755 /data/opt/soloist/bin/* /data/opt/soloist/lib64/ld-linux-aarch64.so.1 \
             /data/opt/soloist/soloist.sh /data/opt/soloist/scripts/*.sh \
             /data/opt/airplay/bin/* /data/opt/airplay/*.sh /data/opt/bin/airplay-watchdog.sh \
-            /data/opt/media/bin/alice-text /data/opt/media/duck.sh
+            /data/opt/media/bin/* /data/opt/media/duck.sh
   mount -o remount,rw /
   for f in S99soloist S99airplay S99zzairplaywd; do
     cp /data/opt/$f /etc/init.d/$f && chmod 755 /etc/init.d/$f

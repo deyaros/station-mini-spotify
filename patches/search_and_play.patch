@@ -29,9 +29,23 @@
 +CURL_OPTS="-s -m 10 --socks5-hostname 192.168.8.111:10808"
 +JQ=/opt/bin/jq
 +GAWK=/opt/bin/gawk
-@@ -86,0 +101,79 @@
+@@ -86,0 +101,103 @@
++SAY=/data/opt/media/bin/alice-say
++
++# Alice says what she is about to play (her own voice, cloud TTS). The voice
++# bridge doesn't cancel Alice while /tmp/soloist-say exists.
++say() {
++    [ -x "$SAY" ] && [ -n "$1" ] || return 0
++    echo "[search] say: $1" >> "$LOG"
++    : > /tmp/soloist-say
++    "$SAY" "$1" >/dev/null 2>&1 &     # in the background: don't hold up the music
++    ( sleep $(( 3 + ${#1} / 20 )); rm -f /tmp/soloist-say ) &
++}
++
++# play_uri URI [announcement]
 +play_uri() {
 +    echo "[search] SUCCESS: Found URI '$1' -> sending to Soloist" >> "$LOG"
++    say "$2"
 +    run_soloist ctl -w 127.0.0.1:9090 activate >/dev/null 2>&1 || true
 +    run_soloist ctl -w 127.0.0.1:9090 play "$1"
 +    exit 0
@@ -62,7 +76,14 @@
 +    else
 +        SPOTIFY_USER=$(cat "$BASE_DIR/data/user_id" 2>/dev/null)
 +    fi
-+    [ -n "$SPOTIFY_USER" ] && play_uri "spotify:user:$SPOTIFY_USER:collection"
++    if [ -n "$SPOTIFY_USER" ]; then
++        # in order, newest first: shuffle would start from a random liked track.
++        # Shuffle only sticks on an active device and before the context loads.
++        run_soloist ctl -w 127.0.0.1:9090 activate >/dev/null 2>&1
++        run_soloist ctl -w 127.0.0.1:9090 shuffle off >/dev/null 2>&1
++        sleep 0.5
++        play_uri "spotify:user:$SPOTIFY_USER:collection" "Включаю ваши любимые треки"
++    fi
 +    echo "[search] Liked songs: Soloist user id not found, falling back to search" >> "$LOG"
 +    TYPE="track"
 +fi
@@ -102,10 +123,29 @@
 +                if (s > best) { best = s; uri = $1 }
 +            }
 +            END { if (best > 0) print uri }')
-+        [ -n "$URI" ] && play_uri "$URI"
++        if [ -n "$URI" ]; then
++            PNAME=$(printf '%s\n' "$LIST" | awk -F'\t' -v u="$URI" '$1 == u { print $2; exit }')
++            play_uri "$URI" "Включаю ваш плейлист «$PNAME»"
++        fi
 +        echo "[search] No own playlist matches '$TERM', searching public playlists" >> "$LOG"
 +    else
 +        echo "[search] No user token (REFRESH_TOKEN missing?), searching public playlists" >> "$LOG"
 +    fi
 +fi
 +
+@@ -211,3 +328,8 @@
+-    echo "[search] SUCCESS: Found URI '$URI' -> sending to Soloist" >> "$LOG"
+-    run_soloist ctl -w 127.0.0.1:9090 activate >/dev/null 2>&1 || true
+-    run_soloist ctl -w 127.0.0.1:9090 play "$URI"
++    # what Alice says: "Кино, «Звезда по имени Солнце»", artist, or album
++    WHAT=$(printf '%s' "$SEARCH_RESP" | $JQ -r --arg u "$URI" '
++        [ (.tracks.items[]?  | select(.uri == $u) | "\(.artists[0].name), «\(.name)»"),
++          (.artists.items[]? | select(.uri == $u) | .name),
++          (.albums.items[]?  | select(.uri == $u) | "альбом «\(.name)», \(.artists[0].name)"),
++          (.playlists.items[]? | select(. != null and .uri == $u) | "плейлист «\(.name)»") ]
++        | first // empty' 2>/dev/null)
++    play_uri "$URI" "Включаю${WHAT:+: $WHAT}"
+@@ -216,2 +338 @@
+-    run_soloist ctl -w 127.0.0.1:9090 activate >/dev/null 2>&1 || true
+-    run_soloist ctl -w 127.0.0.1:9090 play
++    say "Не нашла «$TERM» в Спотифай"

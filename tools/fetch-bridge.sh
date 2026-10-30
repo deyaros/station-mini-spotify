@@ -1,8 +1,9 @@
 #!/bin/sh
 # Fetch soloist-bridge and its helper scripts from Horohi/soloist-station-lite
 # at a pinned commit (that repository has no license, so its code is not part
-# of this one), apply our patch to the search script and build the bridge as a
-# static aarch64 binary in a throwaway Alpine container.
+# of this one), apply our patches (search script: own proxy, likes, playlists,
+# spoken answers; bridge: don't cancel our own announcements) and build the
+# bridge as a static aarch64 binary in a throwaway Alpine container.
 # usage: tools/fetch-bridge.sh OUT        (needs git, docker)
 set -eu
 OUT=${1:?usage: $0 OUT}
@@ -14,7 +15,8 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 git clone -q "$REPO" "$WORK/src"
 git -C "$WORK/src" checkout -q "$COMMIT"
-(cd "$WORK/src" && patch -p1 < "$HERE/speaker/soloist/search_and_play.patch")
+(cd "$WORK/src" && patch -p1 < "$HERE/patches/search_and_play.patch" \
+                && patch -p1 < "$HERE/patches/soloist-bridge-own-speech.patch")
 
 mkdir -p "$OUT/bin" "$OUT/scripts"
 cp "$WORK/src/scripts/search_and_play.sh" "$WORK/src/scripts/toggle.sh" "$OUT/scripts/"

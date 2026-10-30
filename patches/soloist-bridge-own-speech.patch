@@ -1,0 +1,17 @@
+diff --git a/src/soloist-bridge.c b/src/soloist-bridge.c
+index 2dd9821..0cb4a7f 100644
+--- a/src/soloist-bridge.c
++++ b/src/soloist-bridge.c
+@@ -224,0 +225,9 @@ static int64_t cancel_alice_until_ms = 0;
++/* station-mini-spotify: while our own announcement ("Включаю ...") is being
++ * spoken, /tmp/soloist-say exists and Alice must not be cancelled */
++static int own_speech_active(void) {
++    int fd = sys_open("/tmp/soloist-say", 0 /* O_RDONLY */, 0);
++    if (fd < 0) return 0;
++    sys_close(fd);
++    return 1;
++}
++
+@@ -1031 +1040 @@ void _start(void) {
+-                            if (alice_state != 0 && now < cancel_alice_until_ms) {
++                            if (alice_state != 0 && now < cancel_alice_until_ms && !own_speech_active()) {
