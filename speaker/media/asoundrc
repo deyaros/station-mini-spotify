@@ -1,0 +1,17 @@
+# ALSA config for the music players only (Spotify loop and AirPlay run with
+# HOME=/data/opt/media). "media" adds its own volume control, "Media Duck",
+# in front of the system default PCM: duck.sh lowers it while Alice listens,
+# and Alice's own sound (which does not go through it) stays as loud as it was.
+pcm.media {
+    type plug
+    slave.pcm "mediaduck"
+}
+
+pcm.mediaduck {
+    type softvol
+    slave.pcm "default"
+    control { name "Media Duck Playback Volume"; card 0; count 1 }
+    resolution 256
+    min_dB -30.0
+    max_dB 0.0
+}

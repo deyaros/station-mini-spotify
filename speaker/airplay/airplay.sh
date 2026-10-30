@@ -7,6 +7,8 @@ LOG=/tmp/airplay.log
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=$RUN/bus
 export LD_LIBRARY_PATH=/system/vendor/quasar:/system/vendor/quasar/libs
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+# shairport-sync plays to "media" from /data/opt/media/.asoundrc
+export HOME=/data/opt/media
 
 running() { pidof "$1" >/dev/null 2>&1; }
 
@@ -39,12 +41,17 @@ start() {
     spawn shairport "$D/bin/shairport-sync" -c "$D/etc/shairport.conf"
     sleep 3
     kill -0 "$(cat "$RUN/shairport.pid")" 2>/dev/null && return 0
+    # a slow earlier attempt may have come up after all: keep it, fix the pid file
+    pid=$(pidof shairport-sync) && { echo "${pid%% *}" > "$RUN/shairport.pid"; return 0; }
     echo "$(date '+%F %T') shairport-sync exited, retry $try" >> "$LOG"
   done
 }
 
 stop() {
   for n in shairport nqptp avahi dbus; do stop_one $n; done
+  # strays without a pid file (would keep port 7000 busy); not dbus-daemon:
+  # the system bus has the same name
+  killall shairport-sync nqptp avahi-daemon 2>/dev/null
   sleep 1
   rm -f "$RUN/bus"
 }

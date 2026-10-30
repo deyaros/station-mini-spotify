@@ -7,6 +7,7 @@
 - **AirPlay 2** с iPhone и Mac.
 - **AirPlay и Spotify уступают друг другу:** старт AirPlay ставит Spotify на паузу, запуск Spotify обрывает AirPlay-сессию.
 - **Алиса работает как раньше** (свет, вопросы, таймеры) и может говорить поверх музыки.
+- **Пока Алиса слушает, музыка приглушается** до 25 % — команда не тонет в Spotify или AirPlay.
 - Всё стартует при включении, сторож раз в 30 секунд поднимает упавшее.
 
 Проверено на Станции Мини 2 (`yandexmini_2`, прошивка 0.369.1.46, Quasar 3.21).
@@ -48,6 +49,11 @@ iPhone/Mac ──AirPlay 2──▶ shairport-sync + nqptp + avahi (32-bit) ─�
 - **AirPlay** — бинарники из дополнения [spotiya](https://github.com/klockky/spotiya) (MIT), запущенные
   отдельно от него. shairport-sync ждёт готовности NQPTP, сторож перезапускает AirPlay, если avahi
   перезапустился после shairport (иначе служба молча пропадает из сети).
+- **Приглушение.** Spotify (32-битный `aplay`) и AirPlay играют в PCM `media` из
+  `/data/opt/media/.asoundrc`: системный `default` плюс свой регулятор `Media Duck`. `duck.sh` читает
+  состояния Алисы через `alice-text` (из вики hackalice, CC BY 4.0; `tools/build-alice-text.sh`) и
+  опускает регулятор до 25 %, пока она слушает (`@state 1`), до освобождения (`@state 0`), но не
+  дольше 15 с. Громкость самой Алисы не меняется.
 - **«Лайки»** — это `spotify:user:<id>:collection`, id берётся из журнала Soloist. Для плейлистов нужен
   разовый вход с правами только на чтение плейлистов (`tools/spotify_oauth.py`).
 
@@ -116,5 +122,7 @@ python3 tools/spotify_oauth.py keys.env   # открыть ссылку, наж�
 - [Horohi/soloist-station-lite](https://github.com/Horohi/soloist-station-lite) — голосовой мостик.
 - [klockky/spotiya](https://github.com/klockky/spotiya) — сборка AirPlay 2 под Мини.
 - [i-rinat/apulse](https://github.com/i-rinat/apulse) (MIT) — PulseAudio API поверх ALSA.
+- `alice-text` и идея приглушения — рецепт Spotify для Станции 2 в
+  [вики hackalice](https://hackalice.me/recipes/spotify/) (CC BY 4.0).
 
 Код этого репозитория — MIT (см. `LICENSE`); сторонние компоненты — под своими лицензиями.

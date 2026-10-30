@@ -30,8 +30,9 @@ start() {
   [ "$(cat /proc/sys/vm/min_free_kbytes)" -ge 8192 ] || echo 8192 > /proc/sys/vm/min_free_kbytes
   grep -q Loopback /proc/asound/cards || modprobe snd-aloop pcm_substreams=1
   if ! alive loop; then
+    # aplay goes to "media" (/data/opt/media/.asoundrc): default + the Media Duck volume
     start-stop-daemon -S -b -m -p "$RUN/loop.pid" -x /bin/sh -- -c \
-      "exec arecord -q -D hw:Loopback,1,0 $FMT | aplay -q -D default $FMT >>$LOOP_LOG 2>&1"
+      "exec arecord -q -D hw:Loopback,1,0 $FMT | HOME=/data/opt/media aplay -q -D media $FMT >>$LOOP_LOG 2>&1"
   fi
   if ! alive soloist; then
     . "$D/etc/keys.env"
@@ -58,14 +59,20 @@ start() {
   if ! alive guard && [ -x "$D/scripts/airplay-guard.sh" ]; then
     start-stop-daemon -S -b -m -p "$RUN/guard.pid" -x "$D/scripts/airplay-guard.sh"
   fi
+  # music gets quieter while Alice listens
+  if ! alive duck && [ -x /data/opt/media/duck.sh ]; then
+    start-stop-daemon -S -b -m -p "$RUN/duck.pid" -x /data/opt/media/duck.sh
+  fi
 }
 
 stop() {
   # guard: its "soloist ctl trace" child exits by itself once Soloist is gone
-  for n in guard bridge soloist; do
+  for n in duck guard bridge soloist; do
     alive $n && kill "$(cat "$RUN/$n.pid")" 2>/dev/null
     rm -f "$RUN/$n.pid"
   done
+  killall alice-text 2>/dev/null
+  amixer -q -c 0 sset "Media Duck" 100% 2>/dev/null
   # the loop is "sh -c 'arecord | aplay'": stop the pipeline's members too
   if alive loop; then
     kill "$(cat "$RUN/loop.pid")" 2>/dev/null
@@ -80,7 +87,7 @@ case "$1" in
   stop)    stop ;;
   restart) stop; sleep 1; start ;;
   status)
-    for n in soloist bridge loop guard; do
+    for n in soloist bridge loop guard duck; do
       if alive $n; then echo "$n: running ($(cat "$RUN/$n.pid"))"; else echo "$n: stopped"; fi
     done ;;
   *) echo "usage: $0 start|stop|restart|status"; exit 1 ;;
